@@ -7,15 +7,15 @@ from skimage import io, img_as_float32, img_as_uint, img_as_ubyte
 from skimage.transform import rescale
 
 
-class ims:
-    def __init__(self, file, ResolutionLevelLock=0, cache_location=None, mem_size=None, disk_size=2000):
-        
+class ims(h5py.File):
+    def __init__(self, file, ResolutionLevelLock=0, cache_location=None, mem_size=None, disk_size=2000, **kwargs):
+        super().__init__(file, **kwargs)
         ##  mem_size = in gigabytes that remain FREE as cache fills
         ##  disk_size = in gigabytes that remain FREE as cache fills
         ## NOTE: Caching is currently not implemented.  
         
         self.filePathComplete = file
-        self.open()
+        self.dataset = self['DataSet']
         self.filePathBase = os.path.split(file)[0]
         self.fileName = os.path.split(file)[1]
         self.fileExtension = os.path.splitext(self.fileName)[1]
@@ -89,9 +89,9 @@ class ims:
 
             # Collect dataset info
             self.metaData[r, t, c, 'chunks'] = (
-            1, 1, self.hf[location_data].chunks[0], self.hf[location_data].chunks[1], self.hf[location_data].chunks[2])
-            self.metaData[r, t, c, 'shapeH5Array'] = self.hf[location_data].shape
-            self.metaData[r, t, c, 'dtype'] = self.hf[location_data].dtype
+            1, 1, self[location_data].chunks[0], self[location_data].chunks[1], self[location_data].chunks[2])
+            self.metaData[r, t, c, 'shapeH5Array'] = self[location_data].shape
+            self.metaData[r, t, c, 'dtype'] = self[location_data].dtype
 
         if isinstance(self.ResolutionLevelLock, int):
             self.change_resolution_lock(self.ResolutionLevelLock)
@@ -114,35 +114,35 @@ class ims:
         self.shapeH5Array = self.metaData[self.ResolutionLevelLock, 0, 0, 'shapeH5Array']
         self.resolution = self.metaData[self.ResolutionLevelLock, 0, 0, 'resolution']
         self.dtype = self.metaData[self.ResolutionLevelLock, 0, 0, 'dtype']
-        
+
     # def __enter__(self):
     #     print('Opening file: {}'.format(self.filePathComplete))
     #     self.hf = h5py.File(self.filePathComplete, 'r')
     #     self.dataset = self.hf['DataSet']
-    
-    
+
+
     # def __exit__(self, type, value, traceback):
     #     ## Implement flush?
     #     self.hf.close()
     #     self.hf = None
-        
-    def open(self):
-        print('Opening file: {} \n'.format(self.filePathComplete))
-        self.hf = h5py.File(self.filePathComplete, 'r', swmr=True)
-        self.dataset = self.hf['DataSet']
-        # print('OPENED file: {} \n'.format(self.filePathComplete))
-    
-    def __del__(self):
-        self.close()
-    
-    def close(self):
-        ## Implement flush?
-        print('Closing file: {} \n'.format(self.filePathComplete))
-        if self.hf is not None:
-            self.hf.close()
-        self.hf = None
-        self.dataset = None
-        # print('CLOSED file: {} \n'.format(self.filePathComplete))
+
+    # def open(self):
+    #     print('Opening file: {} \n'.format(self.filePathComplete))
+    #     self.hf = h5py.File(self.filePathComplete, 'r', swmr=True)
+    #     self.dataset = self.hf['DataSet']
+    #     # print('OPENED file: {} \n'.format(self.filePathComplete))
+
+    # def __del__(self):
+    #     self.close()
+    #
+    # def close(self):
+    #     ## Implement flush?
+    #     print('Closing file: {} \n'.format(self.filePathComplete))
+    #     if self.hf is not None:
+    #         self.hf.close()
+    #     self.hf = None
+    #     self.dataset = None
+    #     # print('CLOSED file: {} \n'.format(self.filePathComplete))
 
     def __getitem__(self, key):
         """
@@ -160,6 +160,8 @@ class ims:
         ResolutionLevelLock is used when building a multi-resolution series to load into napari
         This option enables a 5D slice to lock on to a specified resolution level.
         """
+        if isinstance(key, str) and any([key.startswith(k) for k in self.keys()]):
+            return super().__getitem__(key)
 
         res = self.ResolutionLevelLock
 
@@ -278,7 +280,7 @@ class ims:
         attrib is a string that defines the attribute to extract: for example
         'ImageSizeX'
         """
-        return str(self.hf[location].attrs[attrib], encoding='ascii')
+        return str(self[location].attrs[attrib], encoding='ascii')
 
     def get_slice(self, r, t, c, z, y, x):
         """
@@ -300,7 +302,7 @@ class ims:
             for idxc, c in enumerate(c_size):
                 ## Below method is faster than all others tried
                 d_set_string = self.location_generator(r, t, c, data='data')
-                self.hf[d_set_string].read_direct(output_array, np.s_[z, y, x], np.s_[idxt, idxc, :, :, :])
+                self[d_set_string].read_direct(output_array, np.s_[z, y, x], np.s_[idxt, idxc, :, :, :])
 
         # with h5py.File(self.filePathComplete, 'r') as hf:
         #     for idxt, t in enumerate(t_size):
